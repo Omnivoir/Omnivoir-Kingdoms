@@ -1,0 +1,64 @@
+// encapsulates player marker, movement circle, and state save/load
+import AuthService from './AuthService.js';
+export default class Player {
+  static init(mapService) {
+    this.map    = mapService.getMap();
+    this.dbRef  = AuthService.getDatabase().ref('users/');
+    this.health = 100;
+    this.score  = 0;
+    this.backpack = [];
+  }
+
+  static spawn(lat, lng) {
+    if (this.marker) this.map.removeLayer(this.marker);
+    this.marker = L.marker([lat,lng], { icon:this.createIcon() })
+      .addTo(this.map).bindPopup('You');
+    this.updateCircle();
+    this.save();
+  }
+
+  static move(lat, lng) {
+    this.spawn(lat, lng);
+    console.log('Moved player to', lat, lng);
+  }
+
+  static createIcon() {
+    return L.divIcon({ html:
+      '<div class="player-sprite">'+
+        '<div class="player-head"></div>'+
+        '<div class="player-torso"></div>'+
+        '<div class="player-boots"></div>'+
+      '</div>',
+      iconSize:[6,18]
+    });
+  }
+
+  static updateCircle() {
+    if (this.moveCircle) this.map.removeLayer(this.moveCircle);
+    if (!this.marker) return;
+    this.moveCircle = L.circle(this.marker.getLatLng(), { radius:50, className:'move-radius' })
+      .addTo(this.map);
+  }
+
+  static save() {
+    const uid = AuthService.auth.currentUser.uid;
+    if (!uid || !this.marker) return;
+    this.dbRef.child(uid).set({
+      health: this.health,
+      score:  this.score,
+      backpack: this.backpack,
+      spawn: this.marker.getLatLng()
+    });
+  }
+
+  static load(uid) {
+    this.dbRef.child(uid).once('value').then(snap=>{
+      const st = snap.val();
+      if (!st || !st.spawn) return;
+      this.health   = st.health;
+      this.score    = st.score;
+      this.backpack = st.backpack || [];
+      this.spawn(st.spawn.lat, st.spawn.lng);
+    });
+  }
+}
