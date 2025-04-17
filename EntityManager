@@ -1,0 +1,89 @@
+// spawns/updates zombies and building loot
+import MapService from './MapService.js';
+import Player     from './Player.js';
+
+export default class EntityManager {
+  static init() {
+    this.map      = MapService.getMap();
+    this.zLayer   = L.layerGroup().addTo(this.map);
+    this.lLayer   = L.layerGroup().addTo(this.map);
+    this.zombies  = [];
+    this.cooldowns= {};
+    this.DETECT_RADIUS = 150;
+  }
+
+  static startLoops() {
+    this.spawnZombie(); this.updateZombies(); this.fetchLoot();
+    setInterval(()=>this.spawnZombie(), 30000);
+    setInterval(()=>this.updateZombies(), 1000);
+    setInterval(()=>this.fetchLoot(), 15000);
+  }
+
+  static spawnZombie() {
+    const P = Player.marker?.getLatLng();
+    if (!P) return;
+    const D = 100 + Math.random()*100, A=Math.random()*360;
+    const S = Player.destination(P.lat,P.lng,A,D);
+    const m = L.marker([S.lat,S.lng], { icon:L.divIcon({ html:
+      '<div class="zombie-sprite">'+
+        '<div class="zombie-head"></div>'+
+        '<div class="zombie-torso"></div>'+
+        '<div class="zombie-boots"></div>'+
+      '</div>', iconSize:[6,18] })})
+      .addTo(this.zLayer).bindPopup('Zombie!');
+    m.health = 3;
+    this.zombies.push(m);
+  }
+
+  static updateZombies() {
+    const P = Player.marker?.getLatLng();
+    if (!P) return;
+    this.zombies = this.zombies.filter(m => {
+      if (!this.map.hasLayer(m)) return false;
+      const Z = m.getLatLng(), d = Player.getDist(P.lat,P.lng,Z.lat,Z.lng);
+      if (d>1000){ this.map.removeLayer(m); return false; }
+      const target = d<50? P : Player.destination(Z.lat,Z.lng,Math.random()*360,Math.random()*5);
+      this.animate(m, m.getLatLng(), target, d<50?18:10);
+      return true;
+    });
+  }
+
+  static animate(m, start, target, speed) { /* copy your animateZombie code */ }
+
+  static spawnZombieLoot(pos) { /* copy spawnZombieLoot code */ }
+
+  static randomLoot() { /* copy randomLoot table logic */ }
+
+  static fetchLoot() {
+    const P = Player.marker?.getLatLng();
+    if (!P) return;
+    const d=0.01, bbox=[P.lat-d,P.lng-d,P.lat+d,P.lng+d].join(',');
+    const q=`[out:json][timeout:25];(way["building"](${bbox}));out center;`;
+
+    fetch('https://overpass-api.de/api/interpreter', {
+      method:'POST',
+      headers:{'Content-Type':'application/x-www-form-urlencoded'},
+      body:'data='+encodeURIComponent(q)
+    })
+    .then(r=>r.json()).then(data=>{
+      data.elements.forEach(el=>{
+        if(!el.center) return;
+        const key=`${el.center.lat.toFixed(5)}_${el.center.lon.toFixed(5)}`;
+        const now = Date.now();
+        if(this.cooldowns[key] && now-this.cooldowns[key]<300000) return;
+        const dist = Player.getDist(P.lat,P.lng,el.center.lat,el.center.lon);
+        if(dist>this.DETECT_RADIUS) return;
+        this.cooldowns[key]=now;
+        const loot=this.randomLoot();
+        L.marker([el.center.lat,el.center.lon], { icon:L.divIcon({ html:'<div class="loot-box">L</div>', iconSize:[10,10] }) })
+          .addTo(this.lLayer)
+          .on('click', function(){
+            Player.backpack.push(loot);
+            UIController.updateStatus(Player.health, Player.score, Player.backpack);
+            this.remove();
+          });
+      });
+    })
+    .catch(_=>console.warn('Overpass error'));
+  }
+}
