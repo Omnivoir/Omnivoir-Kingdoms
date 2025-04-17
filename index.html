@@ -3,23 +3,24 @@
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Gridwalkers – Zombie Survival Prototype</title>
+  <title>Gridwalkers – Zombie Survival Prototype</title>
 
   <!-- Leaflet & Draw CSS -->
-  <link
-    rel="stylesheet"
-    href="https://unpkg.com/leaflet@1.9.3/dist/leaflet.css"
-  />
-  <link
-    rel="stylesheet"
-    href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.css"
-  />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.3/dist/leaflet.css"/>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.css"/>
+
+  <!-- Firebase SDKs -->
+  <script src="https://www.gstatic.com/firebasejs/10.9.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.9.0/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.9.0/firebase-database-compat.js"></script>
+
+  <!-- Leaflet JS -->
+  <script src="https://unpkg.com/leaflet@1.9.3/dist/leaflet.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.js"></script>
 
   <style>
     body { margin:0; padding:0; font-family:Arial,sans-serif; }
     #map { position:absolute; top:60px; bottom:0; left:0; right:0; }
-
-    /* Login overlay */
     #loginOverlay {
       position:fixed; top:0; left:0; width:100%; height:100%;
       background:rgba(0,0,0,0.8); display:flex;
@@ -31,8 +32,6 @@
     #loginOverlay input, #loginOverlay button {
       margin:5px; padding:8px; width:200px;
     }
-
-    /* Search & status */
     #searchBar {
       position:absolute; top:5px; left:10px; z-index:1500;
       background:rgba(255,255,255,0.9); padding:6px; border-radius:4px;
@@ -41,49 +40,12 @@
       position:absolute; top:5px; right:10px; z-index:1500;
       background:rgba(255,255,255,0.9); padding:6px; border-radius:4px;
     }
-
-    /* Road list */
-    #roadList {
-      position:absolute; top:60px; right:0; width:280px;
-      max-height:calc(100% - 60px); overflow-y:auto;
-      background:rgba(255,255,255,0.95); padding:10px; z-index:1400;
-      font-size:14px;
-    }
-    #roadList h3 {
-      margin:0 0 8px; display:flex; justify-content:space-between;
-    }
-    #roadFilter { width:100%; padding:4px; margin-bottom:8px; }
-    .road-item {
-      padding:4px 0; border-bottom:1px solid #ccc; cursor:pointer;
-    }
-    .road-code {
-      font-weight:bold; background:#eef; padding:2px 4px;
-      border-radius:3px; margin-right:4px;
-    }
-    #roadListToggle {
-      position:absolute; top:60px; right:0; z-index:1501;
-      background:rgba(255,255,255,0.9); padding:6px;
-      cursor:pointer; display:none; border-radius:0 0 0 4px;
-    }
-
-    /* Sprites & markers */
-    .player-sprite, .zombie-sprite { display:inline-block; }
-    .player-sprite > div, .zombie-sprite > div {
-      width:6px; height:6px; display:block;
+    .player-sprite > div {
+      width:6px; height:6px;
     }
     .player-head { background:#f1c27d; }
     .player-torso { background:blue; }
     .player-boots { background:black; }
-    .zombie-head { background:green; }
-    .zombie-torso { background:darkgreen; }
-    .zombie-boots { background:black; }
-    .move-radius {
-      fill:rgba(0,0,255,0.1); stroke:blue; stroke-width:1;
-    }
-    .loot-box {
-      width:10px; height:10px; background:sienna; border:1px solid #000;
-      text-align:center; line-height:10px; color:#fff; font-size:8px;
-    }
   </style>
 </head>
 <body>
@@ -98,426 +60,144 @@
     </form>
   </div>
 
-  <!-- SEARCH & STATUS -->
+  <!-- UI BARS -->
   <div id="searchBar">
     <input id="addressInput" placeholder="Enter your address"/>
     <button id="searchBtn">Search</button>
   </div>
   <div id="statusDisplay">
-    Health: <span id="healthDisplay">100</span> |
-    Score: <span id="scoreDisplay">0</span>
+    Health: <span id="healthDisplay">100</span> | Score: <span id="scoreDisplay">0</span>
   </div>
 
-  <!-- MAP & ROAD LIST -->
+  <!-- MAP -->
   <div id="map"></div>
-  <div id="roadList">
-    <h3>
-      Road List
-      <button id="toggleRoadListBtn">✕</button>
-    </h3>
-    <input id="roadFilter" placeholder="Filter roads…"/>
-    <div id="roadsContainer">No roads loaded.</div>
-  </div>
-  <div id="roadListToggle">Show Road List</div>
 
-  <!-- 1) Firebase SDKs (must load before your code) -->
-  <script src="https://www.gstatic.com/firebasejs/10.9.0/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.9.0/firebase-auth-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.9.0/firebase-database-compat.js"></script>
-
-  <!-- 2) Leaflet & Draw JS -->
-  <script src="https://unpkg.com/leaflet@1.9.3/dist/leaflet.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.js"></script>
-
-  <!-- 3) Full game script -->
+  <!-- GAME SCRIPT -->
   <script>
-  window.onload = function() {
-    // —— Firebase Initialization ——
+    // Firebase Config (corrected)
     const firebaseConfig = {
-     
-// Your web app's Firebase configuration
-const firebaseConfig = {
-  apiKey: "AIzaSyAJGah3WMkBkZcwtkRpJ2lk-4dkPvbm0fg",
-  authDomain: "gridwalkers-beta.firebaseapp.com",
-  projectId: "gridwalkers-beta",
-  storageBucket: "gridwalkers-beta.firebasestorage.app",
-  messagingSenderId: "744069223246",
-  appId: "1:744069223246:web:9dfecea4927286a305041f"
-};
-
-// Initialize Firebase
-const app = initializeApp(firebaseConfig);    };
-    if (!firebase.apps.length) {
-      firebase.initializeApp(firebaseConfig);
-    } else {
-      firebase.app();
-    }
+      apiKey: "AIzaSyAJGah3WMkBkZcwtkRpJ2lk-4dkPvbm0fg",
+      authDomain: "gridwalkers-beta.firebaseapp.com",
+      projectId: "gridwalkers-beta",
+      storageBucket: "gridwalkers-beta.appspot.com",
+      messagingSenderId: "744069223246",
+      appId: "1:744069223246:web:9dfecea4927286a305041f"
+    };
+    firebase.initializeApp(firebaseConfig);
     const auth = firebase.auth();
-    const db   = firebase.database();
+    const db = firebase.database();
 
-    // —— UI Controller ——
-    const UI = {
-      init() {
-        this.loginOverlay      = document.getElementById("loginOverlay");
-        this.emailInput        = document.getElementById("emailInput");
-        this.passwordInput     = document.getElementById("passwordInput");
-        this.registerBtn       = document.getElementById("registerBtn");
-        this.loginBtn          = document.getElementById("loginBtn");
-        this.searchBtn         = document.getElementById("searchBtn");
-        this.addressInput      = document.getElementById("addressInput");
-        this.healthDisplay     = document.getElementById("healthDisplay");
-        this.scoreDisplay      = document.getElementById("scoreDisplay");
-        this.toggleRoadListBtn = document.getElementById("toggleRoadListBtn");
-        this.roadListToggle    = document.getElementById("roadListToggle");
-        this.roadList          = document.getElementById("roadList");
-        this.roadFilter        = document.getElementById("roadFilter");
-        this.roadsContainer    = document.getElementById("roadsContainer");
+    // Game variables
+    let playerMarker = null;
+    let playerHealth = 100;
+    let playerScore = 0;
+    let map;
 
-        this.toggleRoadListBtn.addEventListener("click", () => {
-          this.roadList.style.display       = "none";
-          this.roadListToggle.style.display = "block";
-        });
-        this.roadListToggle.addEventListener("click", () => {
-          this.roadList.style.display       = "block";
-          this.roadListToggle.style.display = "none";
-        });
-        this.roadFilter.addEventListener("input", () => {
-          const f = this.roadFilter.value.toLowerCase();
-          this.roadsContainer.querySelectorAll(".road-item")
-            .forEach(it => {
-              it.style.display = it.textContent.toLowerCase().includes(f) ? "" : "none";
-            });
-        });
-      },
-      showLogin() { this.loginOverlay.style.display = "flex"; },
-      hideLogin() { this.loginOverlay.style.display = "none"; },
-      updateStatus(h, s) {
-        this.healthDisplay.textContent = h;
-        this.scoreDisplay.textContent  = s;
-      },
-      showError(msg) { alert(msg); }
-    };
-    UI.init();
-
-    // —— Utilities ——
-    function toRad(d){ return d * Math.PI/180; }
-    function getDist(lat1, lon1, lat2, lon2){
-      const R = 6371000,
-            dLat = toRad(lat2 - lat1),
-            dLon = toRad(lon2 - lon1),
-            a = Math.sin(dLat/2)**2
-              + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2))
-              * Math.sin(dLon/2)**2;
-      return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-    }
-    function destination(lat, lon, br, dist){
-      const R=6371000, δ=dist/R, θ=toRad(br), φ1=toRad(lat), λ1=toRad(lon);
-      const φ2=Math.asin(Math.sin(φ1)*Math.cos(δ)
-                + Math.cos(φ1)*Math.sin(δ)*Math.cos(θ));
-      const λ2=λ1+Math.atan2(
-        Math.sin(θ)*Math.sin(δ)*Math.cos(φ1),
-        Math.cos(δ)-Math.sin(φ1)*Math.sin(φ2)
-      );
-      return { lat: φ2*180/Math.PI, lng: λ2*180/Math.PI };
-    }
-
-    // —— Global State & Layers ——
-    let map, drawnItems, gridBox;
-    let playerMarker, moveCircle;
-    let playerHealth = 100, playerScore = 0, backpack = [];
-    let zombieLayer, lootLayer, zombieMarkers = [];
-    const DETECT_RADIUS = 150;
-    const buildingCooldowns = {};
-
-    // —— Firebase Auth Flow ——
-    auth.onAuthStateChanged(user => {
-      if (user) {
-        console.log("Authenticated:", user.email);
-        UI.hideLogin();
-        startGame();
-      } else {
-        UI.showLogin();
-      }
-    });
-
-    UI.registerBtn.onclick = () => {
-      const email = UI.emailInput.value.trim();
-      const pw = UI.passwordInput.value;
-      console.log("Registering:", email);
-      auth.createUserWithEmailAndPassword(email, pw)
-        .then(cred => console.log("Registered:", cred.user.email))
-        .catch(err => UI.showError("Register failed: " + err.message));
-    };
-
-    UI.loginBtn.onclick = () => {
-      const email = UI.emailInput.value.trim();
-      const pw = UI.passwordInput.value;
-      console.log("Logging in:", email);
-      auth.signInWithEmailAndPassword(email, pw)
-        .then(cred => console.log("Logged in:", cred.user.email))
-        .catch(err => UI.showError("Login failed: " + err.message));
-    };
-
-    // —— Start Game (after auth) ——
-    function startGame() {
-      initMap();
-      // spawn loops once player exists
-      map.on('layeradd', e => {
-        if (e.layer === playerMarker) {
-          spawnZombie(); updateZombies(); fetchLoot();
-          setInterval(spawnZombie, 30000);
-          setInterval(updateZombies, 1000);
-          setInterval(fetchLoot, 15000);
-        }
-      });
-    }
-
-    // —— Map & Draw Controls ——
-    function initMap() {
-      map = L.map("map").setView([36.85, -87.55], 13);
-      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19 }).addTo(map);
-
-      drawnItems = new L.FeatureGroup().addTo(map);
-      new L.Control.Draw({
-        draw: { rectangle: { shapeOptions: { color: "#3388ff", weight: 2 } }, polyline:false, polygon:false, circle:false, marker:false, circlemarker:false },
-        edit: { featureGroup: drawnItems, edit:true, remove:false }
-      }).addTo(map);
-
-      map.on(L.Draw.Event.CREATED, e => {
-        drawnItems.clearLayers();
-        gridBox = e.layer.setStyle({ opacity:0, fillOpacity:0 });
-        drawnItems.addLayer(gridBox);
-        loadRoads();
-      });
-      map.on("draw:edited", loadRoads);
-
-      zombieLayer = L.layerGroup().addTo(map);
-      lootLayer   = L.layerGroup().addTo(map);
-
-      map.on("click", e => {
-        if (playerMarker) movePlayer(e.latlng.lat, e.latlng.lng);
-      });
-
-      UI.searchBtn.onclick = () => {
-        const addr = UI.addressInput.value.trim();
-        if (!addr) return;
-        fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(addr)}`)
-          .then(r => r.json()).then(d => {
-            if (!d.length) return UI.showError("Address not found");
-            spawnPlayer(+d[0].lat, +d[0].lon);
-            map.setView([+d[0].lat, +d[0].lon], 18);
-          });
-      };
-    }
-
-    // —— Player Functions ——
-    function createPlayerIcon() {
-      return L.divIcon({
-        html:
-          '<div class="player-sprite">' +
-            '<div class="player-head"></div>' +
-            '<div class="player-torso"></div>' +
-            '<div class="player-boots"></div>' +
-          '</div>',
-        iconSize: [6, 18]
-      });
+    function updateStatus() {
+      document.getElementById("healthDisplay").textContent = playerHealth;
+      document.getElementById("scoreDisplay").textContent = playerScore;
     }
 
     function spawnPlayer(lat, lng) {
       if (playerMarker) map.removeLayer(playerMarker);
-      playerMarker = L.marker([lat, lng], { icon: createPlayerIcon() })
-        .addTo(map).bindPopup("You");
-      updateMovementCircle();
+      playerMarker = L.marker([lat, lng], {
+        icon: L.divIcon({
+          className: "",
+          html: `<div class="player-sprite">
+                   <div class="player-head"></div>
+                   <div class="player-torso"></div>
+                   <div class="player-boots"></div>
+                 </div>`,
+          iconSize: [6, 18]
+        })
+      }).addTo(map).bindPopup("You");
       saveState();
     }
 
-    function movePlayer(lat, lng) {
-      spawnPlayer(lat, lng);
-      console.log("🚶 Moved player to", lat, lng);
-    }
-
-    function updateMovementCircle() {
-      if (moveCircle) map.removeLayer(moveCircle);
-      if (!playerMarker) return;
-      moveCircle = L.circle(playerMarker.getLatLng(), { radius:50, className:"move-radius" })
-        .addTo(map);
-    }
-
-    // —— Roads via Overpass & RHQC ——
-    function loadRoads() {
-      if (!gridBox) return;
-      const b  = gridBox.getBounds();
-      const bb = [b.getSouth(),b.getWest(),b.getNorth(),b.getEast()].join(",");
-      const query = `[out:json][timeout:25];(way["highway"](${bb}));out geom;`;
-
-      fetch("https://overpass-api.de/api/interpreter", {
-        method: "POST",
-        headers: { "Content-Type":"application/x-www-form-urlencoded" },
-        body: "data=" + encodeURIComponent(query)
-      })
-      .then(r=>r.json()).then(d=>renderRoads(d.elements, b))
-      .catch(_=> UI.showError("Error loading roads"));
-    }
-
-    function renderRoads(elems, b) {
-      let html = "";
-      elems.filter(e=>e.tags&&e.tags.name&&e.geometry)
-           .sort((a,b)=>a.tags.name.localeCompare(b.tags.name))
-           .forEach(e=>{
-        const coords = e.geometry.map(p=>[p.lat,p.lon]);
-        const mid    = coords[Math.floor(coords.length/2)];
-        const code   = rhqc(mid[0], mid[1], b);
-        html += `<div class="road-item"><span class="road-code">${code}</span>${e.tags.name}</div>`;
-      });
-      document.getElementById("roadsContainer").innerHTML = html || "No roads found.";
-    }
-
-    function rhqc(lat, lng, b) {
-      let code="", cb=[[b.getSouth(),b.getWest()],[b.getNorth(),b.getEast()]];
-      for (let i=0; i<5; i++) {
-        const [s,w]=cb[0], [n,e]=cb[1], mLat=(s+n)/2, mLng=(w+e)/2;
-        if (lat>=mLat && lng<=mLng)       { code+="1"; cb=[[mLat,w],[n,mLng]]; }
-        else if (lat>=mLat && lng> mLng)  { code+="2"; cb=[[mLat,mLng],[n,e]]; }
-        else if (lat<  mLat && lng<=mLng) { code+="3"; cb=[[s,w],[mLat,mLng]]; }
-        else                               { code+="4"; cb=[[s,mLng],[mLat,e]]; }
-      }
-      return code;
-    }
-
-    // —— Zombies & Combat ——
-    function spawnZombie() {
-      if (!playerMarker) return;
-      const P = playerMarker.getLatLng();
-      const D = 100 + Math.random()*100, A = Math.random()*360;
-      const S = destination(P.lat, P.lng, A, D);
-      const m = L.marker([S.lat, S.lng], {
-        icon: L.divIcon({ html:
-          '<div class="zombie-sprite">'+
-            '<div class="zombie-head"></div>'+
-            '<div class="zombie-torso"></div>'+
-            '<div class="zombie-boots"></div>'+
-          '</div>',
-          iconSize:[6,18]
-        })
-      }).addTo(zombieLayer).bindPopup("Zombie!");
-      m.health = 3;
-      zombieMarkers.push(m);
-    }
-
-    function updateZombies() {
-      if (!playerMarker) return;
-      const P = playerMarker.getLatLng();
-      zombieMarkers = zombieMarkers.filter(m => {
-        if (!map.hasLayer(m)) return false;
-        const Z = m.getLatLng(), d = getDist(P.lat, P.lng, Z.lat, Z.lng);
-        if (d > 1000) { map.removeLayer(m); return false; }
-        const tgt = (d < 50 ? P : destination(Z.lat, Z.lng, Math.random()*360, Math.random()*5));
-        animateZombie(m, m.getLatLng(), tgt, d < 50 ? 18 : 10);
-        return true;
+    function saveState() {
+      const user = auth.currentUser;
+      if (!user || !playerMarker) return;
+      const pos = playerMarker.getLatLng();
+      db.ref("users/" + user.uid).set({
+        health: playerHealth,
+        score: playerScore,
+        spawn: { lat: pos.lat, lng: pos.lng }
       });
     }
 
-    function animateZombie(m, start, target, speed) {
-      const d   = getDist(start.lat, start.lng, target.lat, target.lng),
-            dur = Math.max(d/speed*1000, 500);
-      let t0;
-      function step(ts) {
-        if (!t0) t0 = ts;
-        let p = (ts - t0)/dur; if (p>1) p=1;
-        const lat = start.lat + (target.lat - start.lat)*p,
-              lng = start.lng + (target.lng - start.lng)*p;
-        m.setLatLng([lat, lng]);
-        if (p<1) requestAnimationFrame(step);
-      }
-      requestAnimationFrame(step);
+    function loadState() {
+      const user = auth.currentUser;
+      if (!user) return;
+      db.ref("users/" + user.uid).once("value").then(snapshot => {
+        const data = snapshot.val();
+        if (data) {
+          playerHealth = data.health || 100;
+          playerScore = data.score || 0;
+          updateStatus();
+          if (data.spawn) {
+            spawnPlayer(data.spawn.lat, data.spawn.lng);
+            map.setView([data.spawn.lat, data.spawn.lng], 18);
+          }
+        }
+      });
     }
 
-    zombieLayer && zombieLayer.on("click", e => {
-      const m = e.layer, P = playerMarker.getLatLng(), Z = m.getLatLng();
-      const d = getDist(P.lat, P.lng, Z.lat, Z.lng);
-      if (d > 50) return alert("Out of range");
-      if (--m.health <= 0) {
-        map.removeLayer(m);
-        spawnZombieLoot(Z);
-        playerScore++;
-        UI.updateStatus(playerHealth, playerScore);
+    function startGame() {
+      document.getElementById("loginOverlay").style.display = "none";
+      map = L.map("map").setView([36.85, -87.55], 13);
+      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+        maxZoom: 19,
+        attribution: '&copy; OpenStreetMap'
+      }).addTo(map);
+
+      document.getElementById("searchBtn").addEventListener("click", () => {
+        const addr = document.getElementById("addressInput").value.trim();
+        if (!addr) return;
+        fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(addr)}`)
+          .then(r => r.json()).then(data => {
+            if (data.length === 0) return alert("Address not found");
+            const lat = parseFloat(data[0].lat);
+            const lng = parseFloat(data[0].lon);
+            map.setView([lat, lng], 18);
+            spawnPlayer(lat, lng);
+          });
+      });
+
+      map.on("click", e => {
+        if (playerMarker) {
+          spawnPlayer(e.latlng.lat, e.latlng.lng);
+        }
+      });
+
+      loadState();
+    }
+
+    // Auth Logic
+    auth.onAuthStateChanged(user => {
+      if (user) {
+        console.log("Logged in as:", user.email);
+        startGame();
+      } else {
+        document.getElementById("loginOverlay").style.display = "flex";
       }
     });
 
-    function spawnZombieLoot(pos) {
-      const loot = randomLoot();
-      L.marker([pos.lat, pos.lng], {
-        icon: L.divIcon({ html:'<div class="loot-box">L</div>', iconSize:[10,10] })
-      }).addTo(lootLayer).on("click", function(){
-        backpack.push(loot);
-        UI.updateStatus(playerHealth, playerScore);
-        map.removeLayer(this);
-      });
-    }
+    document.getElementById("registerBtn").addEventListener("click", () => {
+      const email = document.getElementById("emailInput").value.trim();
+      const pass = document.getElementById("passwordInput").value;
+      auth.createUserWithEmailAndPassword(email, pass)
+        .then(() => alert("Registered successfully!"))
+        .catch(err => alert("Register error: " + err.message));
+    });
 
-    // —— Building Loot w/ Cooldown ——
-    function fetchLoot() {
-      if (!playerMarker) return;
-      const P = playerMarker.getLatLng(), d=0.01;
-      const bbox = [P.lat-d, P.lng-d, P.lat+d, P.lng+d].join(",");
-      const q    = `[out:json][timeout:25];(way["building"](${bbox}));out center;`;
-      fetch("https://overpass-api.de/api/interpreter", {
-        method:"POST",
-        headers:{ "Content-Type":"application/x-www-form-urlencoded" },
-        body:"data="+encodeURIComponent(q)
-      })
-      .then(r=>r.json()).then(data => {
-        data.elements.forEach(el => {
-          if (!el.center) return;
-          const key = `${el.center.lat.toFixed(5)}_${el.center.lon.toFixed(5)}`,
-                now = Date.now();
-          if (buildingCooldowns[key] && now - buildingCooldowns[key] < 300000) return;
-          const dist = getDist(P.lat,P.lng,el.center.lat,el.center.lon);
-          if (dist > DETECT_RADIUS) return;
-          buildingCooldowns[key] = now;
-          const loot = randomLoot();
-          L.marker([el.center.lat, el.center.lon], {
-            icon: L.divIcon({ html:'<div class="loot-box">L</div>', iconSize:[10,10] })
-          }).addTo(lootLayer).on("click", function(){
-            backpack.push(loot);
-            UI.updateStatus(playerHealth, playerScore);
-            map.removeLayer(this);
-          });
-        });
-      }).catch(_=>console.warn("Overpass error"));
-    }
+    document.getElementById("loginBtn").addEventListener("click", () => {
+      const email = document.getElementById("emailInput").value.trim();
+      const pass = document.getElementById("passwordInput").value;
+      auth.signInWithEmailAndPassword(email, pass)
+        .catch(err => alert("Login error: " + err.message));
+    });
 
-    function randomLoot() {
-      const table=[
-        {c:.3,  item:{type:"ammo",           name:"ammo",     quantity:10}},
-        {c:.2,  item:{type:"gun",            name:"pistol",   damage:1, range:100}},
-        {c:.15, item:{type:"gun",            name:"shotgun",  damage:3, range:20}},
-        {c:.15, item:{type:"gun",            name:"AR15",     damage:2, range:200}},
-        {c:.1,  item:{type:"gun",            name:"rifle",    damage:3, range:400}},
-        {c:.1,  item:{type:"consumable",     name:"bandage",  amount:10}}
-      ];
-      let r=Math.random(), sum=0;
-      for(const e of table){
-        sum+=e.c;
-        if(r<sum) return JSON.parse(JSON.stringify(e.item));
-      }
-      return {type:"ammo", name:"ammo", quantity:5};
-    }
-
-    // —— Save / Load ——
-    function saveState(){
-      const user = auth.currentUser;
-      if (!user || !playerMarker) return;
-      db.ref('users/' + user.uid).set({
-        health: playerHealth,
-        score: playerScore,
-        backpack,
-        spawn: playerMarker.getLatLng()
-      });
-    }
     window.addEventListener("beforeunload", saveState);
-
-  }; // end window.onload
   </script>
 </body>
 </html>
