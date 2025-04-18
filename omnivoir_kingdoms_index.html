@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Omnivoir: Kingdoms</title>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.3/dist/leaflet.css" />
+  <style>
+    body { margin: 0; padding: 0; font-family: Arial, sans-serif; }
+    #map { position: absolute; top: 60px; bottom: 0; right: 0; left: 0; }
+    #loginOverlay {
+      position: fixed;
+      top: 0; left: 0;
+      width: 100%; height: 100%;
+      background: rgba(0,0,0,0.8);
+      z-index: 4000;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      color: #fff;
+    }
+    #loginOverlay h1 {
+      font-family: Georgia, serif;
+      font-size: 30px;
+      color: gold;
+      margin-bottom: 20px;
+    }
+    #loginOverlay form {
+      background: #222;
+      padding: 20px;
+      border-radius: 8px;
+      text-align: center;
+    }
+    #loginOverlay input, #loginOverlay button {
+      margin: 5px;
+      padding: 8px;
+    }
+    #statusDisplay {
+      position: absolute;
+      top: 5px;
+      right: 10px;
+      background: rgba(255,255,255,0.9);
+      padding: 6px;
+      border-radius: 4px;
+      font-size: 12px;
+      z-index: 2000;
+    }
+  </style>
+</head>
+<body>
+  <div id="loginOverlay">
+    <h1>Omnivoir: Kingdoms</h1>
+    <form id="loginForm">
+      <input type="text" id="usernameInput" placeholder="Adventurer Name" required /><br>
+      <input type="password" id="passwordInput" placeholder="Secret Phrase" required /><br>
+      <button type="button" id="registerBtn">Register</button>
+      <button type="button" id="loginBtn">Enter Realm</button>
+    </form>
+  </div>
+
+  <div id="statusDisplay">
+    Vitality: <span id="healthDisplay">100</span> | Gold: <span id="scoreDisplay">0</span>
+  </div>
+
+  <div id="map"></div>
+
+  <script src="https://unpkg.com/leaflet@1.9.3/dist/leaflet.js"></script>
+  <script>
+    let map, playerMarker = null, playerHealth = 100, playerScore = 0;
+    let spawnPoint = null, currentUser = null, backpack = [];
+
+    function createPlayerHTML() {
+      return '<div style="text-align:center;"><div style="width:8px;height:8px;background:#f1c27d;"></div><div style="width:8px;height:8px;background:blue;"></div><div style="width:8px;height:8px;background:black;"></div></div>';
+    }
+
+    function loadProfiles() {
+      const profiles = localStorage.getItem("omnivoir_profiles");
+      return profiles ? JSON.parse(profiles) : {};
+    }
+
+    function saveProfiles(profiles) {
+      localStorage.setItem("omnivoir_profiles", JSON.stringify(profiles));
+    }
+
+    function updateStatusDisplay() {
+      document.getElementById("healthDisplay").textContent = playerHealth;
+      document.getElementById("scoreDisplay").textContent = playerScore;
+    }
+
+    document.getElementById("registerBtn").addEventListener("click", () => {
+      const username = document.getElementById("usernameInput").value.trim();
+      const password = document.getElementById("passwordInput").value;
+      if (!username || !password) return alert("Enter both name and phrase.");
+      const profiles = loadProfiles();
+      if (profiles[username]) return alert("Name taken.");
+      profiles[username] = { password, state: { health: 100, score: 0, backpack: [], spawnPoint: null } };
+      saveProfiles(profiles);
+      alert("Welcome! Now enter your realm.");
+    });
+
+    document.getElementById("loginBtn").addEventListener("click", () => {
+      const username = document.getElementById("usernameInput").value.trim();
+      const password = document.getElementById("passwordInput").value;
+      const profiles = loadProfiles();
+      if (!profiles[username]) return alert("Not found.");
+      if (profiles[username].password !== password) return alert("Wrong phrase.");
+      currentUser = username;
+      const state = profiles[username].state;
+      playerHealth = state.health;
+      playerScore = state.score;
+      backpack = state.backpack;
+      spawnPoint = state.spawnPoint;
+      updateStatusDisplay();
+      document.getElementById("loginOverlay").style.display = "none";
+      initMap();
+      if (spawnPoint) spawnPlayerAt(spawnPoint.lat, spawnPoint.lon);
+    });
+
+    function initMap() {
+      map = L.map("map").setView([36.85, -87.55], 13);
+      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+        maxZoom: 19,
+        attribution: '&copy; OpenStreetMap'
+      }).addTo(map);
+      map.on("click", e => {
+        if (playerMarker) animatePlayerMove(e.latlng.lat, e.latlng.lng);
+      });
+    }
+
+    function spawnPlayerAt(lat, lon) {
+      if (playerMarker) map.removeLayer(playerMarker);
+      playerMarker = L.marker([lat, lon], {
+        icon: L.divIcon({ className: "", html: createPlayerHTML(), iconSize: [8,24] })
+      }).addTo(map).bindPopup("You");
+      spawnPoint = { lat, lon };
+      map.setView([lat, lon], 18);
+    }
+
+    function animatePlayerMove(targetLat, targetLng) {
+      const startPos = playerMarker.getLatLng();
+      const distance = getDistanceMeters(startPos.lat, startPos.lng, targetLat, targetLng);
+      const duration = Math.max((distance / 30) * 1000, 500);
+      let startTime = null;
+      function animate(timestamp) {
+        if (!startTime) startTime = timestamp;
+        const progress = Math.min((timestamp - startTime) / duration, 1);
+        const newLat = startPos.lat + (targetLat - startPos.lat) * progress;
+        const newLng = startPos.lng + (targetLng - startPos.lng) * progress;
+        playerMarker.setLatLng([newLat, newLng]);
+        if (progress < 1) requestAnimationFrame(animate);
+      }
+      requestAnimationFrame(animate);
+      map.panTo([targetLat, targetLng], { animate: true, duration: duration/1000 });
+    }
+
+    function getDistanceMeters(lat1, lon1, lat2, lon2) {
+      const R = 6371000, toRad = x => x * Math.PI / 180;
+      const dLat = toRad(lat2-lat1), dLon = toRad(lon2-lon1);
+      const a = Math.sin(dLat/2)**2 + Math.cos(toRad(lat1))*Math.cos(toRad(lat2))*Math.sin(dLon/2)**2;
+      return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+    }
+  </script>
+</body>
+</html>
