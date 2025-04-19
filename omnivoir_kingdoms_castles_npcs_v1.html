@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Omnivoir: Kingdoms</title>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.3/dist/leaflet.css" />
+  <style>
+    body, html { margin: 0; padding: 0; height: 100%; font-family: serif; }
+    #map { height: 100%; }
+    .castle-icon {
+      background: url('https://cdn-icons-png.flaticon.com/512/616/616408.png') no-repeat center;
+      background-size: contain;
+      width: 24px;
+      height: 24px;
+    }
+    .npc-friendly {
+      background-color: limegreen;
+      border-radius: 50%;
+      width: 10px;
+      height: 10px;
+      border: 2px solid white;
+    }
+    .npc-hostile {
+      background-color: crimson;
+      border-radius: 50%;
+      width: 10px;
+      height: 10px;
+      border: 2px solid black;
+    }
+  </style>
+</head>
+<body>
+  <div id="map"></div>
+
+  <script src="https://unpkg.com/leaflet@1.9.3/dist/leaflet.js"></script>
+  <script>
+    const map = L.map('map').setView([37.8, -96.9], 4); // USA view
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 18,
+      attribution: '&copy; OpenStreetMap contributors'
+    }).addTo(map);
+
+    const castleLayer = L.layerGroup().addTo(map);
+    const npcLayer = L.layerGroup().addTo(map);
+
+    function fetchCastlesAndNPCs() {
+      const bounds = map.getBounds();
+      const bbox = `${bounds.getSouth()},${bounds.getWest()},${bounds.getNorth()},${bounds.getEast()}`;
+      const query = `
+        [out:json][timeout:25];
+        (
+          node["capital"="yes"](${bbox});
+          node["place"="city"](${bbox});
+          node["place"="town"](${bbox});
+          way["leisure"="park"](${bbox});
+          way["landuse"="forest"](${bbox});
+        );
+        out center;
+      `;
+
+      fetch("https://overpass-api.de/api/interpreter", {
+        method: "POST",
+        body: "data=" + encodeURIComponent(query)
+      })
+      .then(res => res.json())
+      .then(data => {
+        castleLayer.clearLayers();
+        npcLayer.clearLayers();
+        data.elements.forEach(elem => {
+          if (elem.tags && elem.lat && elem.lon) {
+            if (elem.tags.capital === "yes" || elem.tags.place === "city") {
+              const icon = L.divIcon({ className: 'castle-icon', iconSize: [24, 24] });
+              L.marker([elem.lat, elem.lon], { icon }).addTo(castleLayer)
+                .bindPopup(`<b>Keep of ${elem.tags.name || 'Unknown City'}</b>`);
+            } else if (elem.tags.place === "town") {
+              const npc = L.divIcon({ className: 'npc-friendly' });
+              L.marker([elem.lat, elem.lon], { icon: npc }).addTo(npcLayer)
+                .bindPopup("Villager");
+            }
+          } else if (elem.center && (elem.tags.leisure === "park" || elem.tags.landuse === "forest")) {
+            const npc = L.divIcon({ className: 'npc-hostile' });
+            L.marker([elem.center.lat, elem.center.lon], { icon: npc }).addTo(npcLayer)
+              .bindPopup("Hostile Creature");
+          }
+        });
+      });
+    }
+
+    map.on("moveend", fetchCastlesAndNPCs);
+    fetchCastlesAndNPCs(); // initial load
+  </script>
+</body>
+</html>
