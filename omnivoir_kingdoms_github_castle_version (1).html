@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Omnivoir: Kingdoms – GitHub Asset Version</title>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.3/dist/leaflet.css" />
+  <style>
+    html, body { margin: 0; padding: 0; height: 100%; font-family: serif; }
+    #map { height: 100%; }
+  </style>
+</head>
+<body>
+  <div id="map"></div>
+  <script src="https://unpkg.com/leaflet@1.9.3/dist/leaflet.js"></script>
+  <script>
+    const map = L.map('map').setView([20, 0], 2);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 18,
+      attribution: '&copy; OpenStreetMap contributors'
+    }).addTo(map);
+
+    const castleLayer = L.layerGroup().addTo(map);
+
+    const assets = {
+      small: './assets/castles/small_castle.png',
+      medium: './assets/castles/medium_castle.png',
+      large: './assets/castles/large_castle.png',
+      wall: './assets/castles/wall_segment.png',
+      gate: './assets/castles/gatehouse_segment.png',
+      corner: './assets/castles/corner_segment.png'
+    };
+
+    function placeStructure(lat, lon, size = "medium") {
+      const castleIcon = L.icon({
+        iconUrl: assets[size],
+        iconSize: [32, 32],
+        iconAnchor: [16, 16]
+      });
+      L.marker([lat, lon], { icon: castleIcon }).addTo(castleLayer);
+
+      const offset = 0.03;
+      const layout = [
+        { lat: lat - offset, lon: lon,      type: "wall" },
+        { lat: lat + offset, lon: lon,      type: "gate" },
+        { lat: lat,         lon: lon - offset, type: "wall" },
+        { lat: lat,         lon: lon + offset, type: "wall" },
+        { lat: lat - offset, lon: lon - offset, type: "corner" },
+        { lat: lat - offset, lon: lon + offset, type: "corner" },
+        { lat: lat + offset, lon: lon - offset, type: "corner" },
+        { lat: lat + offset, lon: lon + offset, type: "corner" }
+      ];
+
+      layout.forEach(tile => {
+        const imageUrl = assets[tile.type];
+        const bounds = [
+          [tile.lat - 0.015, tile.lon - 0.015],
+          [tile.lat + 0.015, tile.lon + 0.015]
+        ];
+        L.imageOverlay(imageUrl, bounds).addTo(castleLayer);
+      });
+    }
+
+    function fetchCapitalsAndPlaceCastles() {
+      const query = `
+        [out:json][timeout:45];
+        (
+          node["capital"="yes"];
+        );
+        out body;
+      `;
+      fetch("https://overpass-api.de/api/interpreter", {
+        method: "POST",
+        body: "data=" + encodeURIComponent(query)
+      })
+      .then(res => res.json())
+      .then(data => {
+        data.elements.forEach(el => {
+          if (el.type === "node" && el.lat && el.lon) {
+            placeStructure(el.lat, el.lon, "large");
+          }
+        });
+      });
+    }
+
+    fetchCapitalsAndPlaceCastles();
+  </script>
+</body>
+</html>
