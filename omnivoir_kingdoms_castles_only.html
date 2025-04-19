@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Omnivoir: Kingdoms – Castles Only</title>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.3/dist/leaflet.css" />
+  <style>
+    html, body { margin: 0; padding: 0; height: 100%; font-family: serif; }
+    #map { height: 100%; }
+    .castle-icon {
+      background: url('https://cdn-icons-png.flaticon.com/512/616/616408.png') no-repeat center;
+      background-size: contain;
+      width: 24px;
+      height: 24px;
+    }
+  </style>
+</head>
+<body>
+  <div id="map"></div>
+  <script src="https://unpkg.com/leaflet@1.9.3/dist/leaflet.js"></script>
+  <script>
+    const map = L.map('map').setView([37.8, -96.9], 4); // Center on USA
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 18,
+      attribution: '&copy; OpenStreetMap contributors'
+    }).addTo(map);
+
+    const castleLayer = L.layerGroup().addTo(map);
+
+    function fetchCastlesOnly() {
+      const bounds = map.getBounds();
+      const bbox = `${bounds.getSouth()},${bounds.getWest()},${bounds.getNorth()},${bounds.getEast()}`;
+      const query = `
+        [out:json][timeout:25];
+        (
+          node["capital"="yes"](${bbox});
+          node["place"="city"](${bbox});
+        );
+        out body;
+      `;
+
+      fetch("https://overpass-api.de/api/interpreter", {
+        method: "POST",
+        body: "data=" + encodeURIComponent(query)
+      })
+      .then(res => res.json())
+      .then(data => {
+        castleLayer.clearLayers();
+        data.elements.forEach(elem => {
+          if (elem.tags && elem.lat && elem.lon) {
+            const icon = L.divIcon({ className: 'castle-icon', iconSize: [24, 24] });
+            L.marker([elem.lat, elem.lon], { icon }).addTo(castleLayer)
+              .bindPopup(`<b>Keep of ${elem.tags.name || 'Unnamed Realm'}</b>`);
+          }
+        });
+      });
+    }
+
+    map.on("moveend", fetchCastlesOnly);
+    fetchCastlesOnly();
+  </script>
+</body>
+</html>
