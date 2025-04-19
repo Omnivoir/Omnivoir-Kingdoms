@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Omnivoir: Kingdoms – Simplified Render</title>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.3/dist/leaflet.css"/>
+  <style>
+    html, body { margin: 0; padding: 0; height: 100%; }
+    #map { width: 100%; height: 100%; }
+  </style>
+</head>
+<body>
+  <div id="map"></div>
+  <script src="https://unpkg.com/leaflet@1.9.3/dist/leaflet.js"></script>
+  <script>
+    const map = L.map('map').setView([37.8, -96], 4);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 18,
+      attribution: '&copy; OpenStreetMap contributors'
+    }).addTo(map);
+
+    const layer = L.layerGroup().addTo(map);
+
+    const assets = {
+      small: './assets/castles/small_castle.png',
+      medium: './assets/castles/medium_castle.png',
+      large: './assets/castles/large_castle.png',
+      wall: './assets/castles/wall_segment.png'
+    };
+
+    function metersToDeg(m) {
+      return m / 111000;
+    }
+
+    function placeCastle(node) {
+      let level;
+      if (node.tags && node.tags.capital === 'yes') {
+        level = 'large';
+      } else if (node.tags && node.tags.place === 'city') {
+        level = 'medium';
+      } else if (node.tags && node.tags.place === 'town') {
+        level = 'small';
+      } else {
+        return;
+      }
+      const sizeMeters = level === 'large' ? 500 : level === 'medium' ? 250 : 150;
+      const half = metersToDeg(sizeMeters / 2);
+      // place castle image overlay
+      const bounds = [
+        [node.lat - half, node.lon - half],
+        [node.lat + half, node.lon + half]
+      ];
+      L.imageOverlay(assets[level], bounds).addTo(layer);
+
+      // draw wall as square for now
+      const wallMeters = 50;
+      const wallHalf = metersToDeg(wallMeters / 2);
+      const rectBounds = [
+        [node.lat - half - wallHalf, node.lon - half - wallHalf],
+        [node.lat + half + wallHalf, node.lon + half + wallHalf]
+      ];
+      L.rectangle(rectBounds, { color: 'gray', weight: 2 }).addTo(layer);
+    }
+
+    function fetchData() {
+      const bbox = '24.396308,-125.0,49.384358,-66.93457';
+      const query = `[out:json][timeout:25];
+        (
+          node["capital"="yes"](${bbox});
+          node["place"="city"](${bbox});
+          node["place"="town"](${bbox});
+        );
+        out body;
+      `;
+      fetch('https://overpass-api.de/api/interpreter', {
+        method: 'POST',
+        body: 'data=' + encodeURIComponent(query)
+      })
+      .then(r => r.json())
+      .then(data => {
+        data.elements.forEach(el => {
+          if (el.type === 'node' && el.lat && el.lon) {
+            placeCastle(el);
+          }
+        });
+      })
+      .catch(console.error);
+    }
+
+    fetchData();
+  </script>
+</body>
+</html>
