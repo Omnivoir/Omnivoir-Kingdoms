@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Omnivoir: Kingdoms – Capital Boundaries</title>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.3/dist/leaflet.css" />
+  <style>
+    html, body { margin: 0; padding: 0; height: 100%; font-family: serif; }
+    #map { height: 100%; }
+
+    .castle-icon-large {
+      background: url('https://cdn-icons-png.flaticon.com/512/616/616408.png') no-repeat center;
+      background-size: cover;
+      width: 32px; height: 32px;
+    }
+    .castle-icon-medium {
+      background: url('https://cdn-icons-png.flaticon.com/512/616/616408.png') no-repeat center;
+      background-size: cover;
+      width: 20px; height: 20px;
+    }
+  </style>
+</head>
+<body>
+  <div id="map"></div>
+  <script src="https://unpkg.com/leaflet@1.9.3/dist/leaflet.js"></script>
+  <script>
+    const map = L.map('map').setView([37.8, -96.9], 4); // USA center
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 18,
+      attribution: '&copy; OpenStreetMap contributors'
+    }).addTo(map);
+
+    const realmLayer = L.layerGroup().addTo(map);
+    const kingdomLayer = L.layerGroup().addTo(map);
+    const castleLayer = L.layerGroup().addTo(map);
+
+    async function fetchBoundariesAndCapitals() {
+      const bounds = map.getBounds();
+      const bbox = `${bounds.getSouth()},${bounds.getWest()},${bounds.getNorth()},${bounds.getEast()}`;
+      const query = `
+        [out:json][timeout:25];
+        (
+          relation["admin_level"="2"](${bbox});
+          relation["admin_level"="4"](${bbox});
+          node["capital"="yes"](${bbox});
+        );
+        out body;
+        >;
+        out skel qt;
+      `;
+
+      const res = await fetch("https://overpass-api.de/api/interpreter", {
+        method: "POST",
+        body: "data=" + encodeURIComponent(query)
+      });
+      const data = await res.json();
+      renderBoundariesAndCastles(data.elements);
+    }
+
+    function renderBoundariesAndCastles(elements) {
+      realmLayer.clearLayers();
+      kingdomLayer.clearLayers();
+      castleLayer.clearLayers();
+
+      const nodes = {};
+      const relations = [];
+
+      elements.forEach(el => {
+        if (el.type === "node") {
+          nodes[el.id] = el;
+        } else if (el.type === "relation") {
+          relations.push(el);
+        }
+      });
+
+      relations.forEach(relation => {
+        if (!relation.members || !relation.tags) return;
+
+        const coords = [];
+        relation.members.forEach(member => {
+          if (member.type === "way" && member.geometry) {
+            const latlngs = member.geometry.map(pt => [pt.lat, pt.lon]);
+            coords.push(latlngs);
+          }
+        });
+
+        if (coords.length > 0) {
+          const color = relation.tags.admin_level === "2" ? "#ff0000" : "#0000ff";
+          const opacity = relation.tags.admin_level === "2" ? 0.2 : 0.1;
+          const layer = L.polygon(coords, {
+            color: color,
+            fillColor: color,
+            fillOpacity: opacity,
+            weight: 2
+          });
+          if (relation.tags.name) layer.bindPopup(`${relation.tags.name}`);
+          (relation.tags.admin_level === "2" ? realmLayer : kingdomLayer).addLayer(layer);
+        }
+      });
+
+      // Plot capitals with castle icons
+      elements.forEach(el => {
+        if (el.type === "node" && el.tags && el.tags.capital === "yes") {
+          const isRealm = el.tags["is_in:country"] || el.tags["admin_level"] === "2";
+          const iconClass = isRealm ? "castle-icon-large" : "castle-icon-medium";
+          const icon = L.divIcon({ className: iconClass, iconSize: [32, 32] });
+          L.marker([el.lat, el.lon], { icon }).addTo(castleLayer)
+            .bindPopup(`<b>Keep of ${el.tags.name || 'Unknown Capital'}</b>`);
+        }
+      });
+    }
+
+    map.on("moveend", fetchBoundariesAndCapitals);
+    fetchBoundariesAndCapitals(); // initial load
+  </script>
+</body>
+</html>
