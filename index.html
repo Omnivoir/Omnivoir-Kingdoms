@@ -20,68 +20,87 @@
   <script>
     // --- Map Setup ---
     const map = L.map('map').setView([37.8, -96], 4);
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{
       attribution:'© OpenStreetMap', maxZoom:18
     }).addTo(map);
 
-    // --- Assets (place in /assets/castles/) ---
+    // --- Assets (in /assets/castles/) ---
     const ASSETS = {
       large:  './assets/castles/large_castle.png',
       medium: './assets/castles/medium_castle.png'
     };
 
-    // meters→degrees (approx)
-    const m2deg = m => m / 111000;
-
-    // place 500m×500m castle overlay
+    // --- Helpers ---
+    const m2deg = m => m / 111000;  // meters → degrees
     function placeCastle(lat, lon, type) {
       const half = m2deg(500/2);
       const bounds = [
-        [lat - half, lon - half],
-        [lat + half, lon + half]
+        [lat-half, lon-half],
+        [lat+half, lon+half]
       ];
       L.imageOverlay(ASSETS[type], bounds).addTo(map);
     }
 
-    // fetch national & state capitals via Overpass
-    async function loadCastles() {
-      const bbox = '24.396308,-125.0,49.384358,-66.93457';
-      const query = \`
-        [out:json][timeout:25];
-        (
-          node["capital"~"national|state"](${bbox});
-        );
-        out body;
-      \`;
-      let data;
-      try {
-        const res = await fetch('https://overpass-api.de/api/interpreter', {
-          method:'POST',
-          body:'data='+encodeURIComponent(query)
-        });
-        data = await res.json();
-      } catch(e) {
-        console.error('Overpass error:', e);
-        data = { elements: [] };
-      }
+    // --- Hard‑coded Capitals List ---
+    const capitals = [
+      // Large Castles
+      { name: "Washington, D.C.",    lat: 38.8951, lon: -77.0364, type: "large" },
+      { name: "Los Angeles",         lat: 34.0522, lon: -118.2437, type: "large" },
+      // Medium Castles (State Capitals)
+      { name: "Montgomery",          lat: 32.3668, lon: -86.3000,  type: "medium" },
+      { name: "Juneau",              lat: 58.3019, lon: -134.4197, type: "medium" },
+      { name: "Phoenix",             lat: 33.4484, lon: -112.0740, type: "medium" },
+      { name: "Little Rock",         lat: 34.7465, lon: -92.2896,  type: "medium" },
+      { name: "Sacramento",          lat: 38.5816, lon: -121.4944, type: "medium" },
+      { name: "Denver",              lat: 39.7392, lon: -104.9903, type: "medium" },
+      { name: "Hartford",            lat: 41.7658, lon: -72.6734,  type: "medium" },
+      { name: "Dover",               lat: 39.1582, lon: -75.5244,  type: "medium" },
+      { name: "Tallahassee",         lat: 30.4383, lon: -84.2807,  type: "medium" },
+      { name: "Atlanta",             lat: 33.7490, lon: -84.3880,  type: "medium" },
+      { name: "Honolulu",            lat: 21.3069, lon: -157.8583, type: "medium" },
+      { name: "Boise",               lat: 43.6150, lon: -116.2023, type: "medium" },
+      { name: "Springfield",         lat: 39.7817, lon: -89.6501,  type: "medium" },
+      { name: "Indianapolis",        lat: 39.7684, lon: -86.1581,  type: "medium" },
+      { name: "Des Moines",          lat: 41.5868, lon: -93.6250,  type: "medium" },
+      { name: "Topeka",              lat: 39.0473, lon: -95.6752,  type: "medium" },
+      { name: "Frankfort",           lat: 38.2009, lon: -84.8733,  type: "medium" },
+      { name: "Baton Rouge",         lat: 30.4515, lon: -91.1871,  type: "medium" },
+      { name: "Augusta",             lat: 44.3106, lon: -69.7795,  type: "medium" },
+      { name: "Annapolis",           lat: 38.9784, lon: -76.4922,  type: "medium" },
+      { name: "Boston",              lat: 42.3601, lon: -71.0589,  type: "medium" },
+      { name: "Lansing",             lat: 42.7325, lon: -84.5555,  type: "medium" },
+      { name: "Saint Paul",          lat: 44.9537, lon: -93.0900,  type: "medium" },
+      { name: "Jackson",             lat: 32.2988, lon: -90.1848,  type: "medium" },
+      { name: "Jefferson City",      lat: 38.5767, lon: -92.1735,  type: "medium" },
+      { name: "Helena",              lat: 46.5884, lon: -112.0245, type: "medium" },
+      { name: "Lincoln",             lat: 40.8136, lon: -96.7026,  type: "medium" },
+      { name: "Carson City",         lat: 39.1638, lon: -119.7674, type: "medium" },
+      { name: "Concord",             lat: 43.2081, lon: -71.5376,  type: "medium" },
+      { name: "Trenton",             lat: 40.2171, lon: -74.7429,  type: "medium" },
+      { name: "Santa Fe",            lat: 35.6870, lon: -105.9378, type: "medium" },
+      { name: "Albany",              lat: 42.6526, lon: -73.7562,  type: "medium" },
+      { name: "Raleigh",             lat: 35.7796, lon: -78.6382,  type: "medium" },
+      { name: "Bismarck",            lat: 46.8083, lon: -100.7837, type: "medium" },
+      { name: "Columbus",            lat: 39.9612, lon: -82.9988,  type: "medium" },
+      { name: "Oklahoma City",       lat: 35.4676, lon: -97.5164,  type: "medium" },
+      { name: "Salem",               lat: 44.9429, lon: -123.0351, type: "medium" },
+      { name: "Harrisburg",          lat: 40.2732, lon: -76.8867,  type: "medium" },
+      { name: "Providence",          lat: 41.8236, lon: -71.4222,  type: "medium" },
+      { name: "Columbia",            lat: 34.0007, lon: -81.0348,  type: "medium" },
+      { name: "Pierre",              lat: 44.3683, lon: -100.3510, type: "medium" },
+      { name: "Nashville",           lat: 36.1627, lon: -86.7816,  type: "medium" },
+      { name: "Austin",              lat: 30.2672, lon: -97.7431,  type: "medium" },
+      { name: "Salt Lake City",      lat: 40.7608, lon: -111.8910, type: "medium" },
+      { name: "Montpelier",          lat: 44.2601, lon: -72.5754,  type: "medium" },
+      { name: "Richmond",            lat: 37.5407, lon: -77.4360,  type: "medium" },
+      { name: "Olympia",             lat: 47.0379, lon: -122.9007, type: "medium" },
+      { name: "Charleston",          lat: 38.3498, lon: -81.6326,  type: "medium" },
+      { name: "Madison",             lat: 43.0731, lon: -89.4012,  type: "medium" },
+      { name: "Cheyenne",            lat: 41.1400, lon: -104.8202, type: "medium" }
+    ];
 
-      // Render all fetched capitals
-      data.elements.forEach(el => {
-        if(el.type==='node' && el.lat && el.lon) {
-          const isNational = el.tags.capital==='national';
-          const type = isNational ? 'large' : 'medium';
-          placeCastle(el.lat, el.lon, type);
-        }
-      });
-
-      // Ensure Washington D.C. (if missing) & Los Angeles
-      // Washington, D.C.
-      placeCastle(38.8951, -77.0364, 'large');
-      // Los Angeles
-      placeCastle(34.0522, -118.2437, 'large');
-    }
-
-    document.addEventListener('DOMContentLoaded', loadCastles);
+    // --- Render All Castles ---
+    capitals.forEach(c => placeCastle(c.lat, c.lon, c.type));
   </script>
 </body>
 </html>
