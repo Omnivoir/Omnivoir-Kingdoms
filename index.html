@@ -4,86 +4,81 @@
   <title>Omnivoir: Kingdoms – Core Castle Render</title>
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1"/>
-  <link
-    rel="stylesheet"
+  <link 
+    rel="stylesheet" 
     href="https://unpkg.com/leaflet@1.9.3/dist/leaflet.css"
   />
   <style>
-    html, body, #map {
-      margin: 0;
-      padding: 0;
-      height: 100%;
-    }
+    html, body, #map { margin:0; padding:0; height:100%; }
   </style>
 </head>
 <body>
   <div id="map"></div>
 
+  <!-- Leaflet -->
   <script src="https://unpkg.com/leaflet@1.9.3/dist/leaflet.js"></script>
   <script>
-    // 1) Initialize the map centered on the continental U.S.
+    // --- Map Setup ---
     const map = L.map('map').setView([37.8, -96], 4);
-
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      attribution: '© OpenStreetMap contributors',
-      maxZoom: 18
+      attribution:'© OpenStreetMap', maxZoom:18
     }).addTo(map);
 
-    // 2) Castle image assets (place these in ./assets/castles/)
-    const assets = {
-      large:  'assets/castles/large_castle.png',
-      medium: 'assets/castles/medium_castle.png'
+    // --- Assets (place in /assets/castles/) ---
+    const ASSETS = {
+      large:  './assets/castles/large_castle.png',
+      medium: './assets/castles/medium_castle.png'
     };
 
-    // 3) Convert meters to degrees (approx at mid‑latitudes)
-    function m2deg(meters) {
-      return meters / 111000;
-    }
+    // meters→degrees (approx)
+    const m2deg = m => m / 111000;
 
-    // 4) Place a 500 m × 500 m image overlay at [lat, lon]
+    // place 500m×500m castle overlay
     function placeCastle(lat, lon, type) {
-      const halfDeg = m2deg(500 / 2);
-      const sw = [lat - halfDeg, lon - halfDeg];
-      const ne = [lat + halfDeg, lon + halfDeg];
-      L.imageOverlay(assets[type], [sw, ne]).addTo(map);
+      const half = m2deg(500/2);
+      const bounds = [
+        [lat - half, lon - half],
+        [lat + half, lon + half]
+      ];
+      L.imageOverlay(ASSETS[type], bounds).addTo(map);
     }
 
-    // 5) Fetch national and state capitals + Los Angeles from Overpass
+    // fetch national & state capitals via Overpass
     async function loadCastles() {
       const bbox = '24.396308,-125.0,49.384358,-66.93457';
-      const query = `
-[out:json][timeout:25];
-(
-  node["capital"="national"](${bbox});
-  node["capital"="state"](${bbox});
-  node["name"="Los Angeles"](${bbox});
-);
-out body;
-`;
+      const query = \`
+        [out:json][timeout:25];
+        (
+          node["capital"~"national|state"](${bbox});
+        );
+        out body;
+      \`;
+      let data;
       try {
-        const resp = await fetch('https://overpass-api.de/api/interpreter', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8'
-          },
-          body: 'data=' + encodeURIComponent(query)
+        const res = await fetch('https://overpass-api.de/api/interpreter', {
+          method:'POST',
+          body:'data='+encodeURIComponent(query)
         });
-        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-        const json = await resp.json();
-        console.log('Overpass returned', json.elements.length, 'elements');
-        json.elements.forEach(el => {
-          if (el.lat && el.lon) {
-            // national capital or Los Angeles → large, else state → medium
-            const isLarge =
-              el.tags.capital === 'national' ||
-              el.tags.name === 'Los Angeles';
-            placeCastle(el.lat, el.lon, isLarge ? 'large' : 'medium');
-          }
-        });
-      } catch (err) {
-        console.error('Failed to load Overpass data:', err);
-        alert('Error loading castles: ' + err.message);
+        data = await res.json();
+      } catch(e) {
+        console.error('Overpass error:', e);
+        data = { elements: [] };
       }
+
+      // Render all fetched capitals
+      data.elements.forEach(el => {
+        if(el.type==='node' && el.lat && el.lon) {
+          const isNational = el.tags.capital==='national';
+          const type = isNational ? 'large' : 'medium';
+          placeCastle(el.lat, el.lon, type);
+        }
+      });
+
+      // Ensure Washington D.C. (if missing) & Los Angeles
+      // Washington, D.C.
+      placeCastle(38.8951, -77.0364, 'large');
+      // Los Angeles
+      placeCastle(34.0522, -118.2437, 'large');
     }
 
     document.addEventListener('DOMContentLoaded', loadCastles);
