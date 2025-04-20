@@ -1,94 +1,111 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Omnivoir: Kingdoms – Simplified Render</title>
+  <title>Omnivoir: Kingdoms – USA Castles & Walls</title>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.3/dist/leaflet.css"/>
-  <style>
-    html, body { margin: 0; padding: 0; height: 100%; }
-    #map { width: 100%; height: 100%; }
-  </style>
+  <style>html,body,#map{margin:0;padding:0;height:100%;}</style>
 </head>
 <body>
   <div id="map"></div>
   <script src="https://unpkg.com/leaflet@1.9.3/dist/leaflet.js"></script>
   <script>
+    // Initialize map
     const map = L.map('map').setView([37.8, -96], 4);
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      maxZoom: 18,
-      attribution: '&copy; OpenStreetMap contributors'
+      attribution:'© OpenStreetMap', maxZoom:18
     }).addTo(map);
 
-    const layer = L.layerGroup().addTo(map);
-
+    // Asset paths (ensure these files exist in your repo)
     const assets = {
-      small: './assets/castles/small_castle.png',
+      large:  './assets/castles/large_castle.png',
       medium: './assets/castles/medium_castle.png',
-      large: './assets/castles/large_castle.png',
-      wall: './assets/castles/wall_segment.png'
+      small:  './assets/castles/small_castle.png'
     };
 
-    function metersToDeg(m) {
-      return m / 111000;
+    // Layer containers
+    const castleLayer = L.layerGroup().addTo(map);
+    const wallLayer   = L.layerGroup().addTo(map);
+
+    // Utility: meters to degrees approx
+    const m2deg = m => m / 111000;
+
+    // Place castle overlay
+    function placeCastle(lat, lon, type) {
+      const sizeM = type==='large'?500 : type==='medium'?250 : 150;
+      const half = m2deg(sizeM/2);
+      const bounds = [[lat-half, lon-half],[lat+half, lon+half]];
+      L.imageOverlay(assets[type], bounds).addTo(castleLayer);
     }
 
-    function placeCastle(node) {
-      let level;
-      if (node.tags && node.tags.capital === 'yes') {
-        level = 'large';
-      } else if (node.tags && node.tags.place === 'city') {
-        level = 'medium';
-      } else if (node.tags && node.tags.place === 'town') {
-        level = 'small';
-      } else {
-        return;
-      }
-      const sizeMeters = level === 'large' ? 500 : level === 'medium' ? 250 : 150;
-      const half = metersToDeg(sizeMeters / 2);
-      // place castle image overlay
-      const bounds = [
-        [node.lat - half, node.lon - half],
-        [node.lat + half, node.lon + half]
-      ];
-      L.imageOverlay(assets[level], bounds).addTo(layer);
-
-      // draw wall as square for now
-      const wallMeters = 50;
-      const wallHalf = metersToDeg(wallMeters / 2);
-      const rectBounds = [
-        [node.lat - half - wallHalf, node.lon - half - wallHalf],
-        [node.lat + half + wallHalf, node.lon + half + wallHalf]
-      ];
-      L.rectangle(rectBounds, { color: 'gray', weight: 2 }).addTo(layer);
+    // Draw walls around polygon
+    function drawWallPolygon(coords) {
+      L.polygon(coords, {color:'#666', weight:8, fill:false}).addTo(wallLayer);
     }
 
-    function fetchData() {
+    // Draw square wall for small
+    function drawWallSquare(lat, lon) {
+      const half = m2deg(20000/2);
+      const coords = [
+        [lat-half, lon-half],
+        [lat-half, lon+half],
+        [lat+half, lon+half],
+        [lat+half, lon-half]
+      ];
+      drawWallPolygon(coords);
+    }
+
+    // Fetch data and render
+    async function loadData() {
       const bbox = '24.396308,-125.0,49.384358,-66.93457';
-      const query = `[out:json][timeout:25];
+      const query = `
+        [out:json][timeout:60];
         (
           node["capital"="yes"](${bbox});
           node["place"="city"](${bbox});
           node["place"="town"](${bbox});
+          relation["admin_level"="4"](${bbox});
+          relation["admin_level"="6"](${bbox});
         );
         out body;
+        >;
+        out geom;
       `;
-      fetch('https://overpass-api.de/api/interpreter', {
-        method: 'POST',
-        body: 'data=' + encodeURIComponent(query)
-      })
-      .then(r => r.json())
-      .then(data => {
-        data.elements.forEach(el => {
-          if (el.type === 'node' && el.lat && el.lon) {
-            placeCastle(el);
-          }
-        });
-      })
-      .catch(console.error);
+      const res = await fetch('https://overpass-api.de/api/interpreter', {
+        method:'POST', body:'data='+encodeURIComponent(query)
+      });
+      const data = await res.json();
+      const nodes = data.elements.filter(e => e.type==='node');
+      const rels  = data.elements.filter(e => e.type==='relation');
+
+      // Separate state and county relations
+      const statePolys  = rels.filter(r => r.tags && r.tags.admin_level==='4');
+      const countyPolys = rels.filter(r => r.tags && r.tags.admin_level==='6');
+
+      // Render each node
+      nodes.forEach(n => {
+        const {lat, lon, tags} = n;
+        let type = 'small';
+        if (tags.capital==='yes') type='large';
+        else if (tags.place==='city') type='medium';
+        else if (tags.place==='town') type='small';
+
+        placeCastle(lat, lon, type);
+
+        if (type==='large') {
+          const st = statePolys.find(r => L.polygon(r.geometry.map(p=>[p.lat,p.lon])).getBounds().contains([lat,lon]));
+          if (st) drawWallPolygon(st.geometry.map(p=>[p.lat,p.lon]));
+        } else if (type==='medium') {
+          const ct = countyPolys.find(r => L.polygon(r.geometry.map(p=>[p.lat,p.lon])).getBounds().contains([lat,lon]));
+          if (ct) drawWallPolygon(ct.geometry.map(p=>[p.lat,p.lon]));
+        } else {
+          drawWallSquare(lat, lon);
+        }
+      });
     }
 
-    fetchData();
+    loadData();
   </script>
 </body>
 </html>
